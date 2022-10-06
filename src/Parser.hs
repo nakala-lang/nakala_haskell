@@ -8,19 +8,7 @@ import Text.Parsec.String (Parser)
 import Prelude hiding (Word)
 import Text.ParserCombinators.Parsec.Token (GenTokenParser(whiteSpace))
 import Data.Char (isLetter, isDigit)
-
-data Stmt
-  = Expr Expr
-  | VarDecl String Expr
-  | Assign String Expr 
-  deriving (Show)
-
-data Expr
-  = Add Expr Expr
-  | Sub Expr Expr
-  | NumLit Int
-  | Eq Expr Expr
-  deriving (Show)
+import Ast
 
 binExp :: Parser (Expr -> Expr -> Expr)
 binExp =
