@@ -1,29 +1,28 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Parser (parseProgram) where
 
+import Ast
 import Control.Monad (void)
+import Data.Char (isDigit, isLetter, toUpper)
+import Debug.Trace (trace)
 import Text.Parsec
 import Text.Parsec.String (Parser)
-import Prelude hiding (Word)
-import Text.ParserCombinators.Parsec.Token (GenTokenParser(whiteSpace))
-import Data.Char (isLetter, isDigit)
-import Ast
+import Text.ParserCombinators.Parsec.Token (GenTokenParser (whiteSpace))
+import Prelude hiding (Word, print)
 
-binExp :: Parser (Expr -> Expr -> Expr)
-binExp =
-  do 
-    spaces
-    symbol <- char '+' <|> char '-'
-    spaces
-    return $ case symbol of
-      '+' -> Add
-      '-' -> Sub
-      _ -> undefined
-
+ident_ :: Parser String
+ident_ = do
+  fc <- firstChar
+  rest <- many nonFirstChar
+  return (fc : rest)
+  where
+    firstChar = satisfy (\a -> isLetter a || a == '_')
+    nonFirstChar = satisfy (\a -> isDigit a || isLetter a || a == '_')
 
 add :: Parser Expr
-add = do 
+add = do
   spaces
   x <- expr
   spaces
@@ -40,63 +39,136 @@ sub = do
   spaces
   Sub x <$> expr
 
+eq :: Parser Expr
+eq = do
+  spaces
+  x <- expr
+  spaces
+  char '+'
+  spaces
+  Eq x <$> expr
+
 num :: Parser Expr
 num = do
   spaces
   n <- many1 digit
   return $ NumLit (read n)
 
+bool :: Parser Expr
+bool = do
+  spaces
+  n <- choice [string "true", string "false"]
+  return $ BoolLit (read $ capitilizedLiteral n)
+  where
+    capitilizedLiteral lit = case lit of
+      (fc : rest) -> toUpper fc : rest
+      _ -> undefined
+
+ident :: Parser Expr
+ident = do
+  spaces
+  Ident <$> ident_
+
+sstring :: Parser Expr
+sstring = do
+  char '"'
+  s <- manyTill anyChar (char '"')
+  return $ StrLit s
+
 expr :: Parser Expr
 expr = do
   spaces
-  chainl1 num binExp
+  chainl1 literal binExp
+
+binExp :: Parser (Expr -> Expr -> Expr)
+binExp =
+  do
+    spaces
+    symbol <- choice [string "+", string "-", string "=="]
+    spaces
+    return $ case symbol of
+      "+" -> Add
+      "-" -> Sub
+      "==" -> Eq
+      _ -> undefined
+
+literal :: Parser Expr
+literal = do
+  spaces
+  choice [num, bool, ident, sstring]
 
 exprStmt :: Parser Stmt
-exprStmt = do 
+exprStmt = do
   spaces
   Expr <$> expr
-
-ident :: Parser String
-ident = do
-    fc <- firstChar
-    rest <- many nonFirstChar
-    return (fc:rest)
-  where
-    firstChar = satisfy (\a -> isLetter a || a == '_')
-    nonFirstChar = satisfy (\a -> isDigit a || isLetter a || a == '_')
 
 varDecl :: Parser Stmt
 varDecl = do
   spaces
   string "let"
   spaces
-  name <- ident
+  name <- ident_
   spaces
   char '='
   spaces
   VarDecl name <$> expr
-  
+
 assign :: Parser Stmt
 assign = do
   spaces
-  name <- ident
+  name <- ident_
   spaces
   char '='
   spaces
   Assign name <$> expr
 
+print :: Parser Stmt
+print = do
+  spaces
+  string "print"
+  char '('
+  spaces
+  e <- expr
+  spaces
+  char ')'
+  return $ Print e
+
+iff :: Parser Stmt
+iff = do
+  spaces
+  string "if"
+  spaces
+  char '('
+  cond <- expr
+  char ')'
+  spaces
+  char '{'
+  body <- manyTill stmt (char '}')
+  return $ If cond body
+
+controlFlow :: Parser Stmt
+controlFlow = do
+  spaces
+  choice [iff]
+
+nonControlFlow :: Parser Stmt
+nonControlFlow = do
+  spaces
+  s <- choice [print, varDecl, assign, exprStmt]
+  char ';'
+  return s
+
 stmt :: Parser Stmt
 stmt = do
   spaces
-  s <- choice [exprStmt, varDecl, assign]
-  char ';'
+  s <- choice [controlFlow, nonControlFlow]
+  spaces
   return s
-  
 
 program :: Parser [Stmt]
-program = do 
+program = do
   manyTill stmt eof
 
 parseProgram :: String -> Either ParseError [Stmt]
 parseProgram = do
-  parse program "stdin" 
+  parse program "stdin"
