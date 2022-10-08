@@ -3,28 +3,56 @@
 module Interpreter where
 
 import Ast
-import Value
 import Control.Monad (when)
+import Control.Monad.State.Lazy
+import qualified Data.Map as M
+import Value
+
+newtype Env = Env
+  { vars :: M.Map String Value
+  }
+
+lookupVar :: Monad m => String -> StateT Env m (Maybe Value)
+lookupVar name = do
+  env <- get
+  let m = vars env
+   in return $ M.lookup name m
+
+declareVar :: Monad m => String -> Value -> StateT Env m ()
+declareVar name value = do
+  env <- get
+  let m = vars env
+      m' = M.insert name value m
+   in put env {vars = m'}
 
 eval :: [Stmt] -> IO ()
-eval =
-  mapM_ evalStmt
+eval stmts = do
+  (res, _) <- runStateT (evalBlock stmts) Env {vars = M.empty}
+  return res
 
-evalStmt :: Stmt -> IO ()
-evalStmt stmt =
+evalBlock :: [Stmt] -> StateT Env IO ()
+evalBlock stmts = do
+  mapM_ evalStmt stmts
+
+evalStmt :: Stmt -> StateT Env IO ()
+evalStmt stmt = do
   case stmt of
     Print e -> do
       val <- evalExpr e
-      printValue val
+      liftIO $ printValue val
     If c body -> do
       cond <- evalExpr c
-      when (isTruthy cond) $ eval body
+      when (isTruthy cond) $ do
+        evalBlock body
+    VarDecl name value -> do
+      val <- evalExpr value
+      declareVar name val
     Expr e -> do
       evalExpr e
       return ()
     _ -> undefined
 
-evalExpr :: Expr -> IO Value
+evalExpr :: Monad m => Expr -> StateT Env m Value
 evalExpr e =
   case e of
     NumLit n -> return $ Num n
@@ -38,6 +66,12 @@ evalExpr e =
       a <- evalExpr x
       b <- evalExpr y
       return $ subValues a b
+    Ident name -> do
+      res <- lookupVar name
+      case res of
+        Just x -> return x
+        _ -> do
+          return $ print "Not found"
+          undefined
+
     _ -> undefined
-
-
