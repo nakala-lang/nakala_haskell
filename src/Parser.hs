@@ -113,6 +113,19 @@ varDecl = do
   spaces
   VarDecl name <$> expr
 
+funcDecl :: Parser Stmt
+funcDecl = do
+  spaces
+  string "func"
+  spaces
+  name <- ident_
+  char '('
+  char ')'
+  spaces
+  char '{'
+  body <- manyTill stmt (char '}')
+  return $ FuncDecl name body
+
 assign :: Parser Stmt
 assign = do
   spaces
@@ -146,13 +159,13 @@ iff = do
   body <- manyTill stmt (char '}')
   return $ If cond body
 
-controlFlow :: Parser Stmt
-controlFlow = do
+stmtWithoutSemi :: Parser Stmt
+stmtWithoutSemi = do
   spaces
-  choice [iff]
+  choice [iff, funcDecl]
 
-nonControlFlow :: Parser Stmt
-nonControlFlow = do
+stmtWithSemi :: Parser Stmt
+stmtWithSemi = do
   spaces
   s <- choice [print, varDecl, assign, exprStmt]
   char ';'
@@ -161,7 +174,7 @@ nonControlFlow = do
 stmt :: Parser Stmt
 stmt = do
   spaces
-  s <- choice [controlFlow, nonControlFlow]
+  s <- choice [stmtWithoutSemi, stmtWithSemi]
   spaces
   return s
 

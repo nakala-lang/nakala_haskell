@@ -8,8 +8,9 @@ import Control.Monad.State.Lazy
 import qualified Data.Map as M
 import Value
 
-newtype Env = Env
-  { vars :: M.Map String Value
+data Env = Env
+  { vars :: M.Map String Value,
+    funcs :: M.Map String Value
   }
 
 lookupVar :: Monad m => String -> StateT Env m (Maybe Value)
@@ -25,9 +26,22 @@ declareVar name value = do
       m' = M.insert name value m
    in put env {vars = m'}
 
+lookupFunc :: Monad m => String -> StateT Env m (Maybe Value)
+lookupFunc name = do
+  env <- get
+  let m = funcs env
+   in return $ M.lookup name m
+
+declareFunc :: Monad m => String -> Value -> StateT Env m ()
+declareFunc name value = do
+  env <- get
+  let m = funcs env
+      m' = M.insert name value m
+   in put env {funcs = m'}
+
 eval :: [Stmt] -> IO ()
 eval stmts = do
-  (res, _) <- runStateT (evalBlock stmts) Env {vars = M.empty}
+  (res, _) <- runStateT (evalBlock stmts) Env {vars = M.empty, funcs = M.empty}
   return res
 
 evalBlock :: [Stmt] -> StateT Env IO ()
@@ -47,6 +61,9 @@ evalStmt stmt = do
     VarDecl name value -> do
       val <- evalExpr value
       declareVar name val
+    FuncDecl name body -> do
+      let func = Func name body
+      declareFunc name func
     Expr e -> do
       evalExpr e
       return ()
@@ -73,5 +90,4 @@ evalExpr e =
         _ -> do
           return $ print "Not found"
           undefined
-
     _ -> undefined
